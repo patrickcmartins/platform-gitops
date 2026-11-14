@@ -1,0 +1,38 @@
+# AppProjects = fronteiras de permissão (menor privilégio).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: "Addons de cluster (Istio e config do mesh), dono: time de plataforma"
+  sourceRepos:
+    - https://github.com/patrickcmartins/platform-gitops.git
+    - https://istio-release.storage.googleapis.com/charts
+  destinations:
+    - { server: "*", namespace: istio-system }
+    - { server: "*", namespace: istio-ingress }
+    - { server: "https://kubernetes.default.svc", namespace: argocd }
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workloads
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: "Aplicações de negócio, só recursos namespaced em namespaces permitidos"
+  sourceRepos:
+    - https://github.com/patrickcmartins/sample-app-deploy.git
+  destinations:
+    - { server: "*", namespace: "sample" }
+  clusterResourceWhitelist:
+    - { group: "", kind: Namespace }
+  namespaceResourceBlacklist:
+    - { group: "", kind: ResourceQuota }
+    - { group: "", kind: LimitRange }

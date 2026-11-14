@@ -1,0 +1,32 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  render-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: render
+        run: |
+          mkdir -p out
+          kubectl kustomize bootstrap/hub > out/hub.yaml
+          for cloud in kind aws; do
+            helm lint charts/cluster-addons --set cluster.name=ci --set repoURL=ci -f charts/cluster-addons/values-$cloud.yaml
+            helm template ci charts/cluster-addons -f charts/cluster-addons/values-$cloud.yaml \
+              --set cluster.name=ci-$cloud --set repoURL=https://example.com/repo.git > out/addons-$cloud.yaml
+          done
+          helm template ci charts/istio-config > out/istio-config.yaml
+          for c in clusters/*/addons.yaml; do
+            helm template ci charts/cluster-addons -f "$c" --set cluster.name=ci --set repoURL=x > /dev/null
+          done
+      - name: kubeconform (com schemas de CRDs do Argo CD e Istio)
+        run: |
+          docker run --rm -v "$PWD/out:/out" ghcr.io/yannh/kubeconform:v0.7.0 -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /out

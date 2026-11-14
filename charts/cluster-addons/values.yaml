@@ -1,0 +1,25 @@
+# cluster.name, repoURL e targetRevision são injetados pelo ApplicationSet.
+cluster:
+  name: ""
+repoURL: ""
+targetRevision: main
+
+istio:
+  chartRepo: https://istio-release.storage.googleapis.com/charts
+  version: 1.30.8
+  pilotResources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+  proxyResources:
+    requests: { cpu: 10m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+gateway:
+  replicas: 1
+  service: {}          # sobrescrito por values-<cloud>.yaml
+  nodeSelector: {}
+  tolerations: []
+
+meshConfig:
+  hosts: ["*"]
+  mtlsMode: STRICT

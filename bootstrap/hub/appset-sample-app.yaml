@@ -1,0 +1,45 @@
+# Matrix: (clusters com workloads=enabled) x (envs/<cluster>/config.yaml existe no repo de deploy).
+# Uma app só nasce quando o cluster existe E o time de app criou o ambiente.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sample-app
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  workloads: enabled
+          - git:
+              repoURL: https://github.com/patrickcmartins/sample-app-deploy.git
+              revision: main
+              files:
+                - path: "envs/{{ .name }}/config.yaml"
+  template:
+    metadata:
+      name: "sample-app-{{ .name }}"
+    spec:
+      project: workloads
+      source:
+        repoURL: https://github.com/patrickcmartins/sample-app-deploy.git
+        targetRevision: main
+        path: chart
+        helm:
+          valueFiles:
+            - values.yaml
+            - "../envs/{{ .name }}/values.yaml"
+      destination:
+        name: "{{ .name }}"
+        namespace: "{{ .namespace }}"
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions:
+          - CreateNamespace=true
+        managedNamespaceMetadata:
+          labels:
+            istio-injection: enabled

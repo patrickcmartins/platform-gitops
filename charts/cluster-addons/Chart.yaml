@@ -1,0 +1,5 @@
+apiVersion: v2
+name: cluster-addons
+description: App-of-apps por cluster (Istio + config do mesh), gerado pelo ApplicationSet cluster-addons.
+type: application
+version: 0.1.0

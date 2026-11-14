@@ -1,0 +1,124 @@
+{{- $c := include "addons.cluster" . }}
+# Ordem: -3 base (CRDs) -> -2 istiod -> -1 gateway -> 0 config do mesh
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-istio-base
+  {{- include "addons.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.istio.chartRepo }}
+    chart: base
+    targetRevision: {{ .Values.istio.version }}
+    helm:
+      valuesObject:
+        defaultRevision: default
+  destination:
+    name: {{ $c }}
+    namespace: istio-system
+  # O istiod muda o failurePolicy em runtime; sem isso fica OutOfSync para sempre.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions: [".webhooks[]?.failurePolicy"]
+  {{- include "addons.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-istiod
+  {{- include "addons.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.istio.chartRepo }}
+    chart: istiod
+    targetRevision: {{ .Values.istio.version }}
+    helm:
+      valuesObject:
+        autoscaleEnabled: false
+        pilot:
+          resources: {{- toYaml .Values.istio.pilotResources | nindent 12 }}
+        meshConfig:
+          accessLogFile: /dev/stdout
+        global:
+          meshID: lab-mesh
+          multiCluster:
+            clusterName: {{ $c }}
+          proxy:
+            resources: {{- toYaml .Values.istio.proxyResources | nindent 14 }}
+  destination:
+    name: {{ $c }}
+    namespace: istio-system
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions: [".webhooks[]?.failurePolicy"]
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions: [".webhooks[]?.clientConfig.caBundle"]
+  {{- include "addons.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-istio-ingressgateway
+  {{- include "addons.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.istio.chartRepo }}
+    chart: gateway
+    targetRevision: {{ .Values.istio.version }}
+    helm:
+      releaseName: istio-ingressgateway
+      valuesObject:
+        labels:
+          istio: ingressgateway
+        autoscaling:
+          enabled: false
+        replicaCount: {{ .Values.gateway.replicas }}
+        resources:
+          requests: { cpu: 50m, memory: 64Mi }
+          limits: { memory: 256Mi }
+        service: {{- toYaml .Values.gateway.service | nindent 10 }}
+        {{- with .Values.gateway.nodeSelector }}
+        nodeSelector: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.gateway.tolerations }}
+        tolerations: {{- toYaml . | nindent 10 }}
+        {{- end }}
+  destination:
+    name: {{ $c }}
+    namespace: istio-ingress
+  {{- include "addons.syncPolicy" . | nindent 2 }}
+    managedNamespaceMetadata:
+      labels:
+        istio-injection: enabled
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-istio-config
+  {{- include "addons.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: {{ required "repoURL é obrigatório" .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: charts/istio-config
+    helm:
+      valuesObject: {{- toYaml .Values.meshConfig | nindent 8 }}
+  destination:
+    name: {{ $c }}
+    namespace: istio-system
+  {{- include "addons.syncPolicy" . | nindent 2 }}

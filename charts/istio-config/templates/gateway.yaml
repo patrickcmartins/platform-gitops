@@ -1,0 +1,19 @@
+# Gateway compartilhado (dono: plataforma). Apps só criam VirtualServices
+# apontando para istio-ingress/public-gateway.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: istio-ingress
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        {{- range .Values.hosts }}
+        - {{ printf "*/%s" . | quote }}
+        {{- end }}

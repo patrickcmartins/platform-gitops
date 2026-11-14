@@ -1,0 +1,43 @@
+# Um "addons-<cluster>" para cada cluster com label mesh=istio.
+# Registrou um cluster novo com os labels certos? Ele ganha Istio sozinho.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-addons
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            mesh: istio
+  template:
+    metadata:
+      name: "addons-{{ .name }}"
+      labels:
+        cloud: '{{ index .metadata.labels "cloud" }}'
+        env: '{{ index .metadata.labels "env" }}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/patrickcmartins/platform-gitops.git
+        targetRevision: main
+        path: charts/cluster-addons
+        helm:
+          ignoreMissingValueFiles: true
+          valueFiles:
+            - values.yaml
+            - 'values-{{ index .metadata.labels "cloud" }}.yaml'
+            - "../../clusters/{{ .name }}/addons.yaml"
+          valuesObject:
+            cluster:
+              name: "{{ .name }}"
+            repoURL: https://github.com/patrickcmartins/platform-gitops.git
+            targetRevision: main
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
