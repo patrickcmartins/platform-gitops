@@ -186,6 +186,12 @@ spec:
         singleBinary:
           replicas: 1
           persistence: { enabled: false }
+          # Sem PVC, o chart não monta nada em /var/loki e o rootfs é read-only:
+          # o Loki morre com "mkdir /var/loki: read-only file system". emptyDir resolve (lab, efêmero).
+          extraVolumes:
+            - { name: data, emptyDir: {} }
+          extraVolumeMounts:
+            - { name: data, mountPath: /var/loki }
           resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 1Gi } }
         # Modo SingleBinary: zera os componentes do modo escalável e os extras.
         backend: { replicas: 0 }
