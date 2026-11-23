@@ -36,3 +36,8 @@ Overrides de um cluster específico ficam em `clusters/<nome>/addons.yaml`, por 
 
 - [0001: Tráfego (Ingress, Gateway API, Envoy Gateway, service mesh)](docs/adr/0001-trafego-ingress-gateway-api-mesh.md): quando usar cada um, com ganhos e perdas.
 - Topologia de ambientes (cluster vs namespace por ambiente): [infra-live ADR 0001](https://github.com/patrickcmartins/infra-live/blob/main/docs/adr/0001-topologia-de-ambientes.md).
+
+## Operação
+
+- [Runbook: debug do Istio](docs/runbooks/istio.md): do sintoma ao Envoy, com os comandos e o que cada saída significa.
+- [Postmortem 2026-11-23: validação do Istio fail-open em prod](docs/postmortems/2026-11-23-istio-webhook-fail-open.md)
