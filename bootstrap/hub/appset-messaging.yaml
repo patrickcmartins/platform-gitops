@@ -1,0 +1,42 @@
+# Um "messaging-<cluster>" para cada cluster com label messaging=enabled (Strimzi + Kafka).
+# Mesmo contrato dos outros addons: o cluster pede a capacidade por label.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: messaging
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            messaging: enabled
+  template:
+    metadata:
+      name: "messaging-{{ .name }}"
+      labels:
+        cloud: '{{ index .metadata.labels "cloud" }}'
+        env: '{{ index .metadata.labels "env" }}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/patrickcmartins/platform-gitops.git
+        targetRevision: main
+        path: charts/messaging
+        helm:
+          ignoreMissingValueFiles: true
+          valueFiles:
+            - values.yaml
+            - "../../clusters/{{ .name }}/messaging.yaml"
+          valuesObject:
+            cluster:
+              name: "{{ .name }}"
+            repoURL: https://github.com/patrickcmartins/platform-gitops.git
+            targetRevision: main
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }

@@ -5,4 +5,5 @@ resources:
   - projects.yaml
   - appset-cluster-addons.yaml
   - appset-observability.yaml
+  - appset-messaging.yaml
   - appset-sample-app.yaml

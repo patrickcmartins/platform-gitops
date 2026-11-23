@@ -1,0 +1,40 @@
+name: events
+version: 4.2.1
+
+# 3 nodes com papel combinado (controller + broker). Produção de verdade: controllers
+# dedicados (3) e brokers separados, com storage persistente (gp3) e rack awareness por AZ.
+nodes:
+  replicas: 3
+  roles: [controller, broker]
+  storage: { type: ephemeral, sizeLimit: 2Gi }   # lab: perde dados se o pod morrer
+  resources:
+    requests: { cpu: 200m, memory: 1Gi }
+    limits: { memory: 1536Mi }
+  heap: 768m
+
+# Defaults do cluster: durabilidade antes de throughput.
+config:
+  default.replication.factor: 3
+  min.insync.replicas: 2               # com acks=all: tolera 1 broker fora sem perder escrita
+  offsets.topic.replication.factor: 3
+  transaction.state.log.replication.factor: 3
+  transaction.state.log.min.isr: 2
+  auto.create.topics.enable: false     # tópico é infraestrutura: só via KafkaTopic (PR)
+
+# Quem pode falar com o Kafka (o Strimzi gera a NetworkPolicy a partir disto).
+clientNamespaces: [sample]
+
+# Tópicos declarados em Git: partições, retenção e réplicas revisadas em PR.
+topics:
+  - name: quotes.served
+    partitions: 6        # teto de paralelismo do consumer group (6 consumidores no máximo)
+    replicas: 3
+    config:
+      retention.ms: 604800000   # 7 dias: dá para reprocessar uma semana (replay)
+      min.insync.replicas: 2
+
+monitoring:
+  enabled: true          # PodMonitor + PrometheusRule (precisa do kube-prometheus-stack)
+  lagAlert:
+    threshold: 100       # mensagens
+    for: 5m

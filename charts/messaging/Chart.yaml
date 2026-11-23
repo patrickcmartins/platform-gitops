@@ -1,0 +1,5 @@
+apiVersion: v2
+name: messaging
+description: App-of-apps de mensageria por cluster (operador Strimzi + cluster Kafka), gerado pelo ApplicationSet messaging.
+type: application
+version: 0.1.0

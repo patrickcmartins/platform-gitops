@@ -1,0 +1,50 @@
+{{- $c := include "msg.cluster" . }}
+{{- $ns := .Values.namespace }}
+# Ordem: -2 operador Strimzi (CRDs + controller) -> 0 cluster Kafka, tópicos e monitoramento.
+# O Kafka é DECLARADO (CRs Kafka/KafkaNodePool/KafkaTopic) e o operador faz o trabalho de
+# day-2: rolling restart respeitando réplicas em sincronia, rotação de certificados, upgrade.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-strimzi
+  {{- include "msg.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.strimzi.repo }}
+    chart: strimzi-kafka-operator
+    targetRevision: {{ .Values.strimzi.version }}
+    helm:
+      releaseName: strimzi
+      valuesObject:
+        # Operador observa só o próprio namespace: menor privilégio.
+        watchAnyNamespace: false
+        resources:
+          requests: { cpu: 100m, memory: 384Mi }
+          limits: { memory: 512Mi }
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "msg.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-kafka
+  {{- include "msg.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: {{ required "repoURL é obrigatório" .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: charts/kafka-cluster
+    helm:
+      valuesObject: {{- toYaml .Values.kafka | nindent 8 }}
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "msg.syncPolicy" . | nindent 2 }}

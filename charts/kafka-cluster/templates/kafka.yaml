@@ -1,0 +1,58 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: combined
+  labels:
+    strimzi.io/cluster: {{ .Values.name }}
+spec:
+  replicas: {{ .Values.nodes.replicas }}
+  roles: {{- toYaml .Values.nodes.roles | nindent 4 }}
+  storage: {{- toYaml .Values.nodes.storage | nindent 4 }}
+  resources: {{- toYaml .Values.nodes.resources | nindent 4 }}
+  jvmOptions:
+    -Xms: {{ .Values.nodes.heap }}
+    -Xmx: {{ .Values.nodes.heap }}
+  template:
+    pod:
+      # Espalha os brokers entre nodes: perder um node não pode levar 2 réplicas.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    strimzi.io/cluster: {{ .Values.name }}
+                    strimzi.io/pool-name: combined
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.name }}
+spec:
+  kafka:
+    version: {{ .Values.version }}
+    listeners:
+      # Lab: plaintext dentro do cluster, restrito por NetworkPolicy aos namespaces clientes.
+      # Mundo ideal: listener tls com authentication: tls (ou scram-sha-512), KafkaUser por
+      # aplicação com ACL mínima (frontend só WRITE no tópico; worker só READ + o grupo).
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+        networkPolicyPeers:
+          - podSelector: {}   # o próprio namespace (operador, exporter)
+          {{- range .Values.clientNamespaces }}
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: {{ . }}
+          {{- end }}
+    config: {{- toYaml .Values.config | nindent 6 }}
+  entityOperator:
+    topicOperator: {}   # reconcilia os KafkaTopic deste namespace
+    userOperator: {}
+  # Expõe lag por consumer group/partição (kafka_consumergroup_lag) para o Prometheus.
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"

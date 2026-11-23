@@ -1,0 +1,40 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Values.name }}-kafka-exporter
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/name: {{ .Values.name }}-kafka-exporter
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      path: /metrics
+      interval: 30s
+---
+# Alertas sobre consumo. Lag é o SLI de um consumidor: "quão atrasado estou".
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Values.name }}-consumer-lag
+spec:
+  groups:
+    - name: kafka-consumers
+      rules:
+        # "for": só dispara se o lag ficar alto por um tempo. Um pico que se resolve sozinho
+        # (deploy, rebalance) não acorda ninguém.
+        - alert: KafkaConsumerLagHigh
+          expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > {{ .Values.monitoring.lagAlert.threshold }}
+          for: {{ .Values.monitoring.lagAlert.for }}
+          labels: { severity: warning }
+          annotations:
+            summary: "Consumer group {{`{{ $labels.consumergroup }}`}} atrasado no tópico {{`{{ $labels.topic }}`}}"
+            description: "Lag = {{`{{ $value }}`}} mensagens há mais de {{ .Values.monitoring.lagAlert.for }}. Worker parado, lento, ou dependência (Redis) fora?"
+        # Lag que só cresce = ninguém consumindo (pior que lag alto e estável).
+        - alert: KafkaConsumerGroupStalled
+          expr: sum by (consumergroup, topic) (delta(kafka_consumergroup_current_offset[10m])) == 0 and sum by (consumergroup, topic) (kafka_consumergroup_lag) > 0
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "Consumer group {{`{{ $labels.consumergroup }}`}} parado em {{`{{ $labels.topic }}`}}"
+{{- end }}
