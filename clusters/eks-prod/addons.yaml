@@ -11,6 +11,10 @@ istio:
         port: 4317
 
 meshConfig:
+  # Só os nomes do ambiente: o external-dns cria *.prod.patricktf.neosix.me -> NLB deste gateway.
+  hosts: ["*.prod.patricktf.neosix.me"]
+  tls:
+    credentialName: wildcard-tls
   tracing:
     enabled: true
     samplingPercentage: 100   # lab; em produção 1-10% aqui e tail sampling no Collector
