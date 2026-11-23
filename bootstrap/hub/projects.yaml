@@ -7,13 +7,18 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
-  description: "Addons de cluster (Istio e config do mesh), dono: time de plataforma"
+  description: "Addons de cluster (Istio, config do mesh, observabilidade), dono: time de plataforma"
   sourceRepos:
     - https://github.com/patrickcmartins/platform-gitops.git
     - https://istio-release.storage.googleapis.com/charts
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://open-telemetry.github.io/opentelemetry-helm-charts
   destinations:
     - { server: "*", namespace: istio-system }
     - { server: "*", namespace: istio-ingress }
+    - { server: "*", namespace: observability }
+    - { server: "*", namespace: kube-system }   # kube-prometheus-stack cria Services de scrape aqui
     - { server: "https://kubernetes.default.svc", namespace: argocd }
   clusterResourceWhitelist:
     - { group: "*", kind: "*" }

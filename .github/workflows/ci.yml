@@ -20,7 +20,11 @@ jobs:
             helm template ci charts/cluster-addons -f charts/cluster-addons/values-$cloud.yaml \
               --set cluster.name=ci-$cloud --set repoURL=https://example.com/repo.git > out/addons-$cloud.yaml
           done
-          helm template ci charts/istio-config > out/istio-config.yaml
+          helm template ci charts/istio-config --set tracing.enabled=true > out/istio-config.yaml
+          for guard in false true; do
+            helm lint charts/observability --set cluster.name=ci --set cardinalityGuard=$guard
+            helm template ci charts/observability --set cluster.name=ci --set cardinalityGuard=$guard > out/observability-$guard.yaml
+          done
           for c in clusters/*/addons.yaml; do
             helm template ci charts/cluster-addons -f "$c" --set cluster.name=ci --set repoURL=x > /dev/null
           done

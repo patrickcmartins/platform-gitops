@@ -1,0 +1,41 @@
+# Um "observability-<cluster>" para cada cluster com label observability=enabled.
+# Ligar observabilidade num cluster = mudar um label no registro (Terraform, via PR).
+# Dev fica sem (barato e leve); prod tem a stack completa.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            observability: enabled
+  template:
+    metadata:
+      name: "observability-{{ .name }}"
+      labels:
+        cloud: '{{ index .metadata.labels "cloud" }}'
+        env: '{{ index .metadata.labels "env" }}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/patrickcmartins/platform-gitops.git
+        targetRevision: main
+        path: charts/observability
+        helm:
+          ignoreMissingValueFiles: true
+          valueFiles:
+            - values.yaml
+            - "../../clusters/{{ .name }}/observability.yaml"
+          valuesObject:
+            cluster:
+              name: "{{ .name }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }

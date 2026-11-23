@@ -1,0 +1,236 @@
+{{- $c := include "obs.cluster" . }}
+{{- $ns := .Values.namespace }}
+# Ordem: -3 Prometheus/Grafana (traz os CRDs do operator) -> -2 Tempo e Loki -> -1 Collector.
+# O Collector vem por último: quando ele sobe, os destinos já existem.
+#
+# Fluxo:  apps/Istio --OTLP--> Collector --traces--> Tempo --(service graph)--> Prometheus
+#                                        --metrics-> Prometheus (receptor OTLP nativo)
+#                                        --logs----> Loki (receptor OTLP nativo)
+#         Prometheus também raspa os sidecars do Istio (PodMonitor) e o cluster (kube-state-metrics).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-kube-prometheus-stack
+  {{- include "obs.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.kubePrometheusStack.repo }}
+    chart: kube-prometheus-stack
+    targetRevision: {{ .Values.charts.kubePrometheusStack.version }}
+    helm:
+      releaseName: kps
+      valuesObject:
+        fullnameOverride: kps
+        # EKS gerenciado: não temos acesso a etcd/scheduler/controller-manager.
+        kubeEtcd: { enabled: false }
+        kubeScheduler: { enabled: false }
+        kubeControllerManager: { enabled: false }
+        kubeProxy: { enabled: false }
+        defaultRules:
+          rules: { etcd: false, kubeSchedulerAlerting: false, kubeSchedulerRecording: false, kubeControllerManager: false, kubeProxy: false }
+        alertmanager:
+          alertmanagerSpec:
+            resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 128Mi } }
+        prometheus:
+          prometheusSpec:
+            retention: {{ .Values.retention }}
+            # Prometheus 3 recebe OTLP direto: o Collector manda métricas sem precisar de remote write.
+            enableOTLPReceiver: true
+            otlp:
+              promoteResourceAttributes: {{- toYaml .Values.promoteResourceAttributes | nindent 16 }}
+            # O metrics-generator do Tempo (service graph, span metrics) escreve por remote write.
+            enableRemoteWriteReceiver: true
+            enableFeatures: [exemplar-storage]
+            tsdb:
+              outOfOrderTimeWindow: 30m   # OTLP pode chegar fora de ordem
+            # Pega ServiceMonitor/PodMonitor/PrometheusRule de qualquer release, não só desta.
+            podMonitorSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 3Gi } }
+        grafana:
+          sidecar:
+            datasources:
+              # Exemplar no gráfico de latência -> abre o trace no Tempo.
+              exemplarTraceIdDestinations:
+                datasourceUid: tempo
+                traceIdLabelName: trace_id
+          additionalDataSources:
+            - name: Tempo
+              uid: tempo
+              type: tempo
+              url: http://tempo.{{ $ns }}:3200
+              jsonData:
+                serviceMap: { datasourceUid: prometheus }
+                nodeGraph: { enabled: true }
+                tracesToLogsV2:
+                  datasourceUid: loki
+                  filterByTraceID: true
+                  spanStartTimeShift: "-5m"
+                  spanEndTimeShift: "5m"
+                tracesToMetrics:
+                  datasourceUid: prometheus
+            - name: Loki
+              uid: loki
+              type: loki
+              url: http://loki.{{ $ns }}:3100
+              jsonData:
+                derivedFields:
+                  # Log com trace_id -> link para o trace.
+                  - name: trace_id
+                    matcherType: label
+                    matcherRegex: trace_id
+                    datasourceUid: tempo
+                    url: "$${__value.raw}"
+        # Métricas dos sidecars do Istio (istio_requests_total, istio_request_duration_milliseconds).
+        # É daqui que saem os SLIs de golden signals sem mudar uma linha do app.
+        extraManifests:
+          - apiVersion: monitoring.coreos.com/v1
+            kind: PodMonitor
+            metadata:
+              name: envoy-stats
+              namespace: {{ $ns }}
+            spec:
+              selector:
+                matchExpressions:
+                  - { key: istio-prometheus-ignore, operator: DoesNotExist }
+              namespaceSelector: { any: true }
+              jobLabel: envoy-stats
+              podMetricsEndpoints:
+                - path: /stats/prometheus
+                  interval: 15s
+                  relabelings:
+                    - { action: keep, sourceLabels: [__meta_kubernetes_pod_container_name], regex: istio-proxy }
+                    - { action: keep, sourceLabels: [__meta_kubernetes_pod_annotationpresent_prometheus_io_scrape] }
+                    - action: replace
+                      regex: '(\d+);((([0-9]+?)(\.|$)){4})'
+                      replacement: '$2:$1'
+                      sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+                      targetLabel: __address__
+                    - { action: labeldrop, regex: "__meta_kubernetes_pod_label_(.+)" }
+                    - { action: replace, sourceLabels: [__meta_kubernetes_namespace], targetLabel: namespace }
+                    - { action: replace, sourceLabels: [__meta_kubernetes_pod_name], targetLabel: pod }
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "obs.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-tempo
+  {{- include "obs.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.tempo.repo }}
+    chart: tempo
+    targetRevision: {{ .Values.charts.tempo.version }}
+    helm:
+      releaseName: tempo
+      valuesObject:
+        fullnameOverride: tempo
+        tempo:
+          retention: {{ .Values.retention }}
+          # Gera métricas a partir dos spans: service graph (quem chama quem) e RED por serviço.
+          metricsGenerator:
+            enabled: true
+            remoteWriteUrl: http://kps-prometheus.{{ $ns }}:9090/api/v1/write
+          overrides:
+            defaults:
+              metrics_generator:
+                processors: [service-graphs, span-metrics]
+          resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 1Gi } }
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "obs.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-loki
+  {{- include "obs.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.loki.repo }}
+    chart: loki
+    targetRevision: {{ .Values.charts.loki.version }}
+    helm:
+      releaseName: loki
+      valuesObject:
+        fullnameOverride: loki
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false
+          commonConfig: { replication_factor: 1 }
+          storage: { type: filesystem }
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index: { prefix: loki_index_, period: 24h }
+          limits_config:
+            allow_structured_metadata: true   # necessário para ingestão OTLP
+            retention_period: {{ .Values.retention }}
+        singleBinary:
+          replicas: 1
+          persistence: { enabled: false }
+          resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { memory: 1Gi } }
+        # Modo SingleBinary: zera os componentes do modo escalável e os extras.
+        backend: { replicas: 0 }
+        read: { replicas: 0 }
+        write: { replicas: 0 }
+        chunksCache: { enabled: false }
+        resultsCache: { enabled: false }
+        gateway: { enabled: false }
+        lokiCanary: { enabled: false }
+        test: { enabled: false }
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "obs.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-otel-collector
+  {{- include "obs.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.otelCollector.repo }}
+    chart: opentelemetry-collector
+    targetRevision: {{ .Values.charts.otelCollector.version }}
+    helm:
+      releaseName: otel-collector
+      valuesObject:
+        fullnameOverride: otel-collector
+        # DaemonSet: um por node. Lê os logs do node (filelog) e recebe OTLP dos pods.
+        mode: daemonset
+        image:
+          repository: otel/opentelemetry-collector-contrib
+        presets:
+          logsCollection: { enabled: true }
+          kubernetesAttributes: { enabled: true }
+        service:
+          enabled: true
+        resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }
+        config:
+          {{- tpl (.Files.Get "files/collector-config.yaml") . | nindent 10 }}
+  destination:
+    name: {{ $c }}
+    namespace: {{ $ns }}
+  {{- include "obs.syncPolicy" . | nindent 2 }}

@@ -1,0 +1,37 @@
+# cluster.name é injetado pelo ApplicationSet.
+cluster:
+  name: ""
+
+namespace: observability
+
+# Lab: tudo em modo enxuto, storage efêmero (emptyDir) e retenção curta.
+# Produção: Mimir/Tempo/Loki distribuídos com S3, retenção curta nas pontas e longa no bucket.
+retention: 24h
+
+charts:
+  kubePrometheusStack:
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 93.9.0
+  tempo:
+    repo: https://grafana.github.io/helm-charts
+    version: 1.24.4
+  loki:
+    repo: https://grafana.github.io/helm-charts
+    version: 7.7.0
+  otelCollector:
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.182.0
+
+# Atributos de resource OTel que viram label no Prometheus.
+# Lista FECHADA de propósito: só valores de baixa cardinalidade (nada de pod, IP, user).
+promoteResourceAttributes:
+  - service.version
+  - deployment.environment
+  - k8s.namespace.name
+  - k8s.deployment.name
+
+# Demo de cardinalidade: começa DESLIGADO. Liga HIGH_CARDINALITY no app, vê as séries explodirem,
+# e a correção é um PR trocando isto para true (sem redeploy do app).
+cardinalityGuard: false
+highCardinalityAttributes:
+  - user_id

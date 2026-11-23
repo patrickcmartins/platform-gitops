@@ -3,3 +3,14 @@ istio:
   pilotResources:
     requests: { cpu: 200m, memory: 512Mi }
     limits: { memory: 2Gi }
+  # Tracing do mesh -> OTel Collector (instalado pelo ApplicationSet observability).
+  extensionProviders:
+    - name: otel
+      opentelemetry:
+        service: otel-collector.observability.svc.cluster.local
+        port: 4317
+
+meshConfig:
+  tracing:
+    enabled: true
+    samplingPercentage: 100   # lab; em produção 1-10% aqui e tail sampling no Collector

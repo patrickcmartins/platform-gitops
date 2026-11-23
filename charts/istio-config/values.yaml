@@ -1,2 +1,6 @@
 hosts: ["*"]
 mtlsMode: STRICT
+tracing:
+  enabled: false
+  provider: otel
+  samplingPercentage: 100

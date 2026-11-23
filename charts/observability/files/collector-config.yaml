@@ -1,0 +1,52 @@
+# Config do OTel Collector (mesclada com os defaults do chart; listas substituem, mapas mesclam).
+# Os presets do chart acrescentam o receiver file_log (logs dos pods) e o processor k8s_attributes.
+receivers:
+  # Só OTLP: os defaults do chart (jaeger, zipkin, prometheus) ficam desligados.
+  jaeger: null
+  zipkin: null
+  prometheus: null
+
+processors:
+  # Primeiro da fila: se a memória passar do limite, o Collector recusa dados (backpressure)
+  # em vez de ser morto por OOM.
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch: {}
+  # Guarda de cardinalidade: remove atributos de valor ilimitado ANTES de virar série no Prometheus.
+  # Corrige o problema sem redeploy do app. Ligado/desligado por values (cardinalityGuard).
+  transform/cardinality:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+{{- range .Values.highCardinalityAttributes }}
+          - delete_key(attributes, "{{ . }}")
+{{- end }}
+
+exporters:
+  otlp_grpc/tempo:
+    endpoint: tempo.{{ .Values.namespace }}:4317
+    tls: { insecure: true }
+  otlp_http/prometheus:
+    endpoint: http://kps-prometheus.{{ .Values.namespace }}:9090/api/v1/otlp
+    tls: { insecure: true }
+  otlp_http/loki:
+    endpoint: http://loki.{{ .Values.namespace }}:3100/otlp
+    tls: { insecure: true }
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [otlp_grpc/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, k8s_attributes{{ if .Values.cardinalityGuard }}, transform/cardinality{{ end }}, batch]
+      exporters: [otlp_http/prometheus]
+    logs:
+      receivers: [otlp, file_log]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [otlp_http/loki]

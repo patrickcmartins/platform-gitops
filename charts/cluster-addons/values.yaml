@@ -10,6 +10,8 @@ istio:
   pilotResources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
+  # Providers de telemetria do mesh (ex.: tracing OTel). Vazio = sem tracing.
+  extensionProviders: []
   proxyResources:
     requests: { cpu: 10m, memory: 64Mi }
     limits: { memory: 256Mi }
@@ -23,3 +25,7 @@ gateway:
 meshConfig:
   hosts: ["*"]
   mtlsMode: STRICT
+  tracing:
+    enabled: false
+    provider: otel
+    samplingPercentage: 100

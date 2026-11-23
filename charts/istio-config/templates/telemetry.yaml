@@ -1,0 +1,14 @@
+{{- if .Values.tracing.enabled }}
+# Tracing no mesh inteiro: cada sidecar gera um span por request e manda ao Collector (OTLP).
+# O app propaga o traceparent; Istio + SDK do app = um trace só, da borda até o backend.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: {{ .Values.tracing.provider }}
+      randomSamplingPercentage: {{ .Values.tracing.samplingPercentage }}
+{{- end }}
