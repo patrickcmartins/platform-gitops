@@ -35,7 +35,10 @@ spec:
             cluster:
               name: "{{ .name }}"
             # Só clusters com DNS ganham rota pública para o Grafana.
-            domain: '{{ if eq (get .metadata.labels "dns") "enabled" }}{{ get .metadata.labels "env" }}.patricktf.neosix.me{{ end }}'
+            # index (não get): labels são map[string]string e o get do Sprig exige
+            # map[string]interface{}. Chave ausente com index = "" (o missingkey=error
+            # só vale para .a.b).
+            domain: '{{ if eq (index .metadata.labels "dns") "enabled" }}{{ index .metadata.labels "env" }}.patricktf.neosix.me{{ end }}'
       destination:
         server: https://kubernetes.default.svc
         namespace: argocd
