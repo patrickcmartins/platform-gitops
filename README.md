@@ -31,3 +31,8 @@ Overrides de um cluster específico ficam em `clusters/<nome>/addons.yaml`, por 
 * Mude o label `mesh` do hub para `istio` no `infra-live` e veja o Argo CD instalar o Istio nele sozinho.
 * Suba `istio.version` só em `clusters/kind-dev/addons.yaml`: é um canary de upgrade de plataforma.
 * Apague um Deployment na mão e veja o `selfHeal` recriá-lo.
+
+## Decisões de arquitetura (ADRs)
+
+- [0001: Tráfego (Ingress, Gateway API, Envoy Gateway, service mesh)](docs/adr/0001-trafego-ingress-gateway-api-mesh.md): quando usar cada um, com ganhos e perdas.
+- Topologia de ambientes (cluster vs namespace por ambiente): [infra-live ADR 0001](https://github.com/patrickcmartins/infra-live/blob/main/docs/adr/0001-topologia-de-ambientes.md).
