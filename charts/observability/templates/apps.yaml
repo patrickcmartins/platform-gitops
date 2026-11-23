@@ -52,6 +52,11 @@ spec:
             ruleSelectorNilUsesHelmValues: false
             resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 3Gi } }
         grafana:
+          {{- with .Values.domain }}
+          grafana.ini:
+            server:
+              root_url: {{ printf "https://grafana.%s" . | quote }}
+          {{- end }}
           sidecar:
             datasources:
               # Exemplar no gráfico de latência -> abre o trace no Tempo.
@@ -88,6 +93,22 @@ spec:
         # Métricas dos sidecars do Istio (istio_requests_total, istio_request_duration_milliseconds).
         # É daqui que saem os SLIs de golden signals sem mudar uma linha do app.
         extraManifests:
+          {{- with .Values.domain }}
+          # Grafana em https://grafana.<env>.lab.neosix.me (gateway compartilhado, TLS wildcard).
+          # Lab: protegido só pelo login do Grafana. Ideal: SSO (OIDC) no Grafana e/ou
+          # AuthorizationPolicy no gateway limitando a origem (VPN, IPs da empresa).
+          - apiVersion: networking.istio.io/v1
+            kind: VirtualService
+            metadata:
+              name: grafana
+              namespace: {{ $ns }}
+            spec:
+              hosts: [{{ printf "grafana.%s" . | quote }}]
+              gateways: [istio-ingress/public-gateway]
+              http:
+                - route:
+                    - destination: { host: kps-grafana.{{ $ns }}.svc.cluster.local, port: { number: 80 } }
+          {{- end }}
           - apiVersion: monitoring.coreos.com/v1
             kind: PodMonitor
             metadata:

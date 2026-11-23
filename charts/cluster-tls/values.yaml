@@ -1,0 +1,5 @@
+domain: ""
+region: us-east-2
+acme:
+  email: ""
+  issuer: letsencrypt-prod

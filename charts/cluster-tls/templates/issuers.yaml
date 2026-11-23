@@ -1,0 +1,25 @@
+# Dois issuers: staging (para testar sem gastar o rate limit) e prod (certificado confiável).
+# DNS-01: prova o domínio criando um TXT no Route 53, então funciona para WILDCARD e sem
+# precisar abrir a porta 80 (o HTTP-01 não emite wildcard).
+{{- range $name, $server := dict "letsencrypt-staging" "https://acme-staging-v02.api.letsencrypt.org/directory" "letsencrypt-prod" "https://acme-v02.api.letsencrypt.org/directory" }}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ $name }}
+spec:
+  acme:
+    server: {{ $server }}
+    {{- with $.Values.acme.email }}
+    email: {{ . }}
+    {{- end }}
+    privateKeySecretRef:
+      name: {{ $name }}-account
+    solvers:
+      - selector:
+          dnsZones: [{{ $.Values.domain | quote }}]
+        dns01:
+          route53:
+            region: {{ $.Values.region }}
+            # sem accessKeyID/role: credencial ambiente do pod (EKS Pod Identity)
+{{- end }}

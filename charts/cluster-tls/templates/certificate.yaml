@@ -1,0 +1,18 @@
+# Um certificado wildcard por ambiente, no namespace do gateway (o Istio lê o Secret de lá).
+# O cert-manager renova sozinho ~30 dias antes de expirar (a Let's Encrypt emite por 90).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard
+spec:
+  secretName: wildcard-tls
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.acme.issuer }}
+  dnsNames:
+    - {{ printf "*.%s" .Values.domain | quote }}
+    - {{ .Values.domain | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always   # chave nova a cada renovação

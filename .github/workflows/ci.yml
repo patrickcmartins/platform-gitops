@@ -20,10 +20,13 @@ jobs:
             helm template ci charts/cluster-addons -f charts/cluster-addons/values-$cloud.yaml \
               --set cluster.name=ci-$cloud --set repoURL=https://example.com/repo.git > out/addons-$cloud.yaml
           done
-          helm template ci charts/istio-config --set tracing.enabled=true > out/istio-config.yaml
+          helm template ci charts/istio-config --set tracing.enabled=true --set tls.credentialName=x --set 'hosts={*.ci.example.com}' > out/istio-config.yaml
           helm lint charts/messaging --set cluster.name=ci --set repoURL=x
           helm template ci charts/messaging --set cluster.name=ci --set repoURL=x > out/messaging.yaml
           helm lint charts/kafka-cluster
+          helm lint charts/dns-tls --set cluster.name=ci --set domain=ci.example.com --set repoURL=x
+          helm template ci charts/dns-tls --set cluster.name=ci --set domain=ci.example.com --set repoURL=x > out/dns-tls.yaml
+          helm lint charts/cluster-tls --set domain=ci.example.com
           for guard in false true; do
             helm lint charts/observability --set cluster.name=ci --set cardinalityGuard=$guard
             helm template ci charts/observability --set cluster.name=ci --set cardinalityGuard=$guard > out/observability-$guard.yaml

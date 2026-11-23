@@ -1,0 +1,21 @@
+# cluster.name, domain, repoURL e targetRevision são injetados pelo ApplicationSet.
+cluster:
+  name: ""
+domain: ""            # zona do ambiente, ex.: stg.lab.neosix.me (só ela é gravável por este cluster)
+repoURL: ""
+targetRevision: main
+region: us-east-2
+
+acme:
+  email: ""           # avisos de expiração da Let's Encrypt (opcional)
+  # Um wildcard por ambiente = 1 emissão a cada ~60 dias: longe do rate limit da Let's Encrypt
+  # (5 certificados idênticos por semana). Para testar o fluxo à vontade: "letsencrypt-staging".
+  issuer: letsencrypt-prod
+
+charts:
+  certManager:
+    repo: https://charts.jetstack.io
+    version: v1.21.3
+  externalDns:
+    repo: https://kubernetes-sigs.github.io/external-dns/
+    version: 1.24.0

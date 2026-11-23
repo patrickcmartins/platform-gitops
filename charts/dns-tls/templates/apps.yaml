@@ -1,0 +1,89 @@
+{{- $c := include "dns.cluster" . }}
+{{- $domain := required "domain é obrigatório (injetado pelo ApplicationSet)" .Values.domain }}
+# Ordem: -3 cert-manager e external-dns (CRDs, controllers) -> -1 issuers e certificado.
+# Credenciais AWS: NENHUMA aqui. Os pods recebem a role via EKS Pod Identity
+# (infra-live/aws/<env>/eks/dns.tf), limitada à zona deste ambiente.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-cert-manager
+  {{- include "dns.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.certManager.repo }}
+    chart: cert-manager
+    targetRevision: {{ .Values.charts.certManager.version }}
+    helm:
+      releaseName: cert-manager
+      valuesObject:
+        crds: { enabled: true, keep: true }   # keep: apagar o chart não apaga os certificados
+        # A checagem de propagação do DNS-01 usa resolvers públicos: o resolver da VPC
+        # pode responder com cache antigo e atrasar a emissão.
+        dns01RecursiveNameservers: "1.1.1.1:53,8.8.8.8:53"
+        dns01RecursiveNameserversOnly: true
+        resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 256Mi } }
+  destination:
+    name: {{ $c }}
+    namespace: cert-manager
+  {{- include "dns.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-external-dns
+  {{- include "dns.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.charts.externalDns.repo }}
+    chart: external-dns
+    targetRevision: {{ .Values.charts.externalDns.version }}
+    helm:
+      releaseName: external-dns
+      valuesObject:
+        provider: { name: aws }
+        env:
+          - { name: AWS_DEFAULT_REGION, value: {{ .Values.region }} }
+        # Lê os hosts dos Gateways do Istio e cria registros apontando para o NLB do gateway.
+        sources: [istio-gateway]
+        # Só mexe na zona deste ambiente (a role IAM também só permite esta zona: defesa em profundidade).
+        domainFilters: [{{ $domain }}]
+        # sync = cria, atualiza E apaga. O registro TXT de "dono" (txtOwnerId) garante que ele
+        # só apaga o que ele mesmo criou, nunca um registro feito à mão ou por outro cluster.
+        policy: sync
+        registry: txt
+        txtOwnerId: {{ $c }}
+        interval: 1m
+        resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 128Mi } }
+  destination:
+    name: {{ $c }}
+    namespace: external-dns
+  {{- include "dns.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-cluster-tls
+  {{- include "dns.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: platform
+  source:
+    repoURL: {{ required "repoURL é obrigatório" .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: charts/cluster-tls
+    helm:
+      valuesObject:
+        domain: {{ $domain }}
+        region: {{ .Values.region }}
+        acme: {{- toYaml .Values.acme | nindent 10 }}
+  destination:
+    name: {{ $c }}
+    namespace: istio-ingress
+  {{- include "dns.syncPolicy" . | nindent 2 }}

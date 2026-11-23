@@ -1,0 +1,43 @@
+# Um "dns-tls-<cluster>" para cada cluster com label dns=enabled (external-dns + cert-manager).
+# A zona do cluster vem do label env: <env>.lab.neosix.me (criada em infra-live/aws/global/dns).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: dns-tls
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            dns: enabled
+  template:
+    metadata:
+      name: "dns-tls-{{ .name }}"
+      labels:
+        cloud: '{{ index .metadata.labels "cloud" }}'
+        env: '{{ index .metadata.labels "env" }}'
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/patrickcmartins/platform-gitops.git
+        targetRevision: main
+        path: charts/dns-tls
+        helm:
+          ignoreMissingValueFiles: true
+          valueFiles:
+            - values.yaml
+            - "../../clusters/{{ .name }}/dns-tls.yaml"
+          valuesObject:
+            cluster:
+              name: "{{ .name }}"
+            domain: '{{ index .metadata.labels "env" }}.lab.neosix.me'
+            repoURL: https://github.com/patrickcmartins/platform-gitops.git
+            targetRevision: main
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }

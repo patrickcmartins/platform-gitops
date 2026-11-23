@@ -17,3 +17,21 @@ spec:
         {{- range .Values.hosts }}
         - {{ printf "*/%s" . | quote }}
         {{- end }}
+      {{- if .Values.tls.credentialName }}
+      # Com TLS ligado, HTTP só redireciona (301) para HTTPS.
+      tls:
+        httpsRedirect: true
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        {{- range .Values.hosts }}
+        - {{ printf "*/%s" . | quote }}
+        {{- end }}
+      tls:
+        mode: SIMPLE
+        # Secret no namespace do gateway, emitido e renovado pelo cert-manager (charts/cluster-tls).
+        credentialName: {{ .Values.tls.credentialName }}
+        minProtocolVersion: TLSV1_2
+      {{- end }}

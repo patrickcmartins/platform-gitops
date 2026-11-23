@@ -4,3 +4,5 @@ tracing:
   enabled: false
   provider: otel
   samplingPercentage: 100
+tls:
+  credentialName: ""   # vazio = só HTTP (kind). EKS: wildcard-tls (cert-manager)
