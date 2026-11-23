@@ -4,7 +4,7 @@ cluster:
 
 namespace: observability
 
-# Domínio do ambiente (ex.: prod.lab.neosix.me). Vazio = Grafana sem rota pública.
+# Domínio do ambiente (ex.: prod.patricktf.neosix.me). Vazio = Grafana sem rota pública.
 domain: ""
 
 # Lab: tudo em modo enxuto, storage efêmero (emptyDir) e retenção curta.

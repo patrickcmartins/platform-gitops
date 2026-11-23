@@ -94,7 +94,7 @@ spec:
         # É daqui que saem os SLIs de golden signals sem mudar uma linha do app.
         extraManifests:
           {{- with .Values.domain }}
-          # Grafana em https://grafana.<env>.lab.neosix.me (gateway compartilhado, TLS wildcard).
+          # Grafana em https://grafana.<env>.patricktf.neosix.me (gateway compartilhado, TLS wildcard).
           # Lab: protegido só pelo login do Grafana. Ideal: SSO (OIDC) no Grafana e/ou
           # AuthorizationPolicy no gateway limitando a origem (VPN, IPs da empresa).
           - apiVersion: networking.istio.io/v1
