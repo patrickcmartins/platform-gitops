@@ -1,5 +1,5 @@
 # Um "dns-tls-<cluster>" para cada cluster com label dns=enabled (external-dns + cert-manager).
-# A zona do cluster vem do label env: <env>.lab.neosix.me (criada em infra-live/aws/global/dns).
+# A zona do cluster vem do label env: <env>.patricktf.neosix.me (criada em infra-live/aws/global/dns).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -33,7 +33,7 @@ spec:
           valuesObject:
             cluster:
               name: "{{ .name }}"
-            domain: '{{ index .metadata.labels "env" }}.lab.neosix.me'
+            domain: '{{ index .metadata.labels "env" }}.patricktf.neosix.me'
             repoURL: https://github.com/patrickcmartins/platform-gitops.git
             targetRevision: main
       destination:

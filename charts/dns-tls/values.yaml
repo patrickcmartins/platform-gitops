@@ -1,7 +1,7 @@
 # cluster.name, domain, repoURL e targetRevision são injetados pelo ApplicationSet.
 cluster:
   name: ""
-domain: ""            # zona do ambiente, ex.: stg.lab.neosix.me (só ela é gravável por este cluster)
+domain: ""            # zona do ambiente, ex.: stg.patricktf.neosix.me (só ela é gravável por este cluster)
 repoURL: ""
 targetRevision: main
 region: us-east-2

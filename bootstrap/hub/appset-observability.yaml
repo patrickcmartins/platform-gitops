@@ -35,7 +35,7 @@ spec:
             cluster:
               name: "{{ .name }}"
             # Só clusters com DNS ganham rota pública para o Grafana.
-            domain: '{{ if eq (get .metadata.labels "dns") "enabled" }}{{ get .metadata.labels "env" }}.lab.neosix.me{{ end }}'
+            domain: '{{ if eq (get .metadata.labels "dns") "enabled" }}{{ get .metadata.labels "env" }}.patricktf.neosix.me{{ end }}'
       destination:
         server: https://kubernetes.default.svc
         namespace: argocd
