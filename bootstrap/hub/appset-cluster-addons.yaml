@@ -34,6 +34,10 @@ spec:
           valuesObject:
             cluster:
               name: "{{ .name }}"
+            # Só EKS tem estas annotations (infra-live: module.registration); kind recebe "".
+            aws:
+              vpcId: '{{ index .metadata.annotations "vpc-id" }}'
+              region: '{{ index .metadata.annotations "region" }}'
             repoURL: https://github.com/patrickcmartins/platform-gitops.git
             targetRevision: main
       destination:

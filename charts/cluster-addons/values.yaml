@@ -16,9 +16,28 @@ istio:
     requests: { cpu: 10m, memory: 64Mi }
     limits: { memory: 256Mi }
 
+# Injetados pelo ApplicationSet a partir das annotations do cluster (só EKS).
+aws:
+  vpcId: ""
+  region: ""
+
+# AWS Load Balancer Controller (ligado em values-aws.yaml).
+lbController:
+  enabled: false
+  chartRepo: https://aws.github.io/eks-charts
+  version: 3.6.3      # a policy IAM em infra-live/aws/shared/iam é da MESMA versão
+
 gateway:
   replicas: 1
   service: {}          # sobrescrito por values-<cloud>.yaml
+  # Portas NÃO privilegiadas no pod (targetPort 8080/8443): sem sysctl nem capability,
+  # e dentro da faixa 1025-65535 que os nodes já aceitam entre si.
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile: { type: RuntimeDefault }
+  topologySpreadConstraints: []
+  podDisruptionBudget: {}
+  namespaceLabels: {}  # labels extras no namespace istio-ingress
   nodeSelector: {}
   tolerations: []
 
