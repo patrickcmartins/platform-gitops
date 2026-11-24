@@ -1,0 +1,54 @@
+{{- if .Values.lbController.enabled }}
+{{- $c := include "addons.cluster" . }}
+# AWS Load Balancer Controller: cria o NLB do gateway em modo IP (alvo = IP do pod).
+# Wave -4: tem que existir ANTES do Service do gateway (wave -1), senão ninguém cria o NLB.
+# Identidade: Pod Identity (infra-live/aws/<env>/eks/lb-controller.tf). Nenhuma chave aqui.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $c }}-aws-load-balancer-controller
+  {{- include "addons.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.lbController.chartRepo }}
+    chart: aws-load-balancer-controller
+    targetRevision: {{ .Values.lbController.version }}
+    helm:
+      releaseName: aws-load-balancer-controller
+      valuesObject:
+        clusterName: {{ $c }}
+        # Vêm das annotations do cluster no hub (infra-live: module.registration).
+        vpcId: {{ required "aws.vpcId é obrigatório (annotation vpc-id do cluster)" .Values.aws.vpcId }}
+        region: {{ required "aws.region é obrigatório (annotation region do cluster)" .Values.aws.region }}
+        replicaCount: 2
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller   # o nome que a associação de Pod Identity espera
+        # Desligado de propósito: o webhook de Service (failurePolicy Fail) barraria a criação
+        # de QUALQUER Service com o controller fora do ar (lição do postmortem do Istio).
+        # Não precisamos dele: o gateway declara loadBalancerClass explicitamente.
+        enableServiceMutatorWebhook: false
+        podDisruptionBudget: { maxUnavailable: 1 }
+        resources:
+          requests: { cpu: 20m, memory: 64Mi }
+          limits: { memory: 256Mi }
+  destination:
+    name: {{ $c }}
+    namespace: kube-system
+  # O chart gera um certificado novo do webhook a cada render: sem isso, OutOfSync eterno
+  # (e, com selfHeal, o cert e o caBundle trocariam a cada sync).
+  ignoreDifferences:
+    - kind: Secret
+      name: aws-load-balancer-tls
+      jsonPointers: [/data]
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions: [".webhooks[]?.clientConfig.caBundle"]
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions: [".webhooks[]?.clientConfig.caBundle"]
+  {{- include "addons.syncPolicy" . | nindent 2 }}
+{{- end }}

@@ -16,8 +16,9 @@ jobs:
           mkdir -p out
           kubectl kustomize bootstrap/hub > out/hub.yaml
           for cloud in kind aws; do
-            helm lint charts/cluster-addons --set cluster.name=ci --set repoURL=ci -f charts/cluster-addons/values-$cloud.yaml
-            helm template ci charts/cluster-addons -f charts/cluster-addons/values-$cloud.yaml \
+            aws_sets="--set aws.vpcId=vpc-ci --set aws.region=us-east-2"
+            helm lint charts/cluster-addons --set cluster.name=ci --set repoURL=ci $aws_sets -f charts/cluster-addons/values-$cloud.yaml
+            helm template ci charts/cluster-addons -f charts/cluster-addons/values-$cloud.yaml $aws_sets \
               --set cluster.name=ci-$cloud --set repoURL=https://example.com/repo.git > out/addons-$cloud.yaml
           done
           helm template ci charts/istio-config --set tracing.enabled=true --set tls.credentialName=x --set 'hosts={*.ci.example.com}' > out/istio-config.yaml

@@ -1,8 +1,50 @@
-# EKS: Service LoadBalancer vira um NLB público.
+# EKS: NLB em modo IP, criado pelo AWS Load Balancer Controller.
+#
+# Por que modo IP: no modo instance o NLB entrega no NodePort e o kube-proxy pode mandar a
+# conexão para o pod do OUTRO node. Foi o que quebrou prod em 2026-11-24 (o SG dos nodes
+# não aceitava 80/443 entre nodes). Em modo IP o NLB fala direto com o IP do pod.
+lbController:
+  enabled: true
+
 gateway:
   replicas: 2
   service:
     type: LoadBalancer
+    # Classe explícita: quem cria o NLB é o controller, nunca o cloud provider do EKS.
+    # Campo IMUTÁVEL: migrar de um Service antigo exige recriá-lo (ver docs/runbooks).
+    loadBalancerClass: service.k8s.aws/nlb
+    allocateLoadBalancerNodePorts: false   # modo IP não usa NodePort
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
       service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      # Health check que diz se o Envoy está PRONTO, não só se a porta abre.
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: HTTP
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
+      service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthz/ready
+      # Cada IP do NLB pode entregar em qualquer AZ: perder o pod de uma zona não derruba o IP dela.
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+      # Tempo para drenar conexões de um pod que está saindo (padrão: 300 s).
+      service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.timeout_seconds=30
+    ports:
+      - { name: status-port, port: 15021, targetPort: 15021, protocol: TCP }
+      - { name: http2, port: 80, targetPort: 8080, protocol: TCP }
+      - { name: https, port: 443, targetPort: 8443, protocol: TCP }
+  # Um pod por AZ (e por node). ScheduleAnyway: perder uma AZ não deixa réplica Pending.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels: { istio: ingressgateway }
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels: { istio: ingressgateway }
+  podDisruptionBudget:
+    minAvailable: 1
+  # Readiness gate do controller: o rollout só segue quando o NLB marca o pod novo como
+  # healthy. Sem isso, um rollout pode trocar os pods mais rápido do que o NLB registra.
+  namespaceLabels:
+    elbv2.k8s.aws/pod-readiness-gate-inject: enabled

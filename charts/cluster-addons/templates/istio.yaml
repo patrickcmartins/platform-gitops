@@ -92,6 +92,15 @@ spec:
           requests: { cpu: 50m, memory: 64Mi }
           limits: { memory: 256Mi }
         service: {{- toYaml .Values.gateway.service | nindent 10 }}
+        # Sem isto o chart põe o sysctl ip_unprivileged_port_start=0 para escutar em 80/443.
+        # O gateway escuta em 8080/8443 (targetPort): nenhum privilégio extra.
+        securityContext: {{- toYaml .Values.gateway.securityContext | nindent 10 }}
+        {{- with .Values.gateway.topologySpreadConstraints }}
+        topologySpreadConstraints: {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.gateway.podDisruptionBudget }}
+        podDisruptionBudget: {{- toYaml . | nindent 10 }}
+        {{- end }}
         {{- with .Values.gateway.nodeSelector }}
         nodeSelector: {{- toYaml . | nindent 10 }}
         {{- end }}
@@ -105,6 +114,9 @@ spec:
     managedNamespaceMetadata:
       labels:
         istio-injection: enabled
+        {{- with .Values.gateway.namespaceLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
